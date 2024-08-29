@@ -1,0 +1,108 @@
+version: '3'
+# 指定多个服务
+services:
+  # ******** MySQL 服务 ******** #
+  mysql-server:
+    image: mysql:8.0
+    restart: always
+    environment:
+      TZ: Asia/Shanghai
+      LANG: C.UTF-8
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-AiDeA20231129}
+      MYSQL_DATABASE: aidea_server
+      MYSQL_USER: aidea
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-AiDeA20231129}
+    ports:
+      - "3306:3306"
+    expose:
+      - "3306"
+    volumes:
+      - /app/mysql/data:/var/lib/mysql
+      - /app/mysql/log:/var/log/mysql
+      # - /app/mysql/conf:/etc/mysql/conf.d
+    command:
+      --max_connections=1000
+      --default-authentication-plugin=mysql_native_password
+    networks:
+      - app-network
+  # ******** Redis 服务 ******** #
+  redis-server:
+    image: redis:7.0
+    restart: always
+    command: redis-server --save 60 1 --loglevel warning --requirepass ${REDIS_PASSWORD:-AiDeA20231129}
+    ports:
+      - "6379"
+    expose:
+      - "6379"
+    volumes:
+      - /app/redis/redis.conf:/etc/redis/redis.conf
+      - /app/redis/data:/data
+    networks:
+      - app-network
+  # ******** Postgresql 服务 ******** #
+  postgresql-server:
+    image: postgres:16.3
+    restart: always
+    environment:
+      POSTGRES_DB: xuanxue
+      POSTGRES_USER: xuanxue
+      POSTGRES_PASSWORD: ${MYSQL_PASSWORD:-XUANXUW20240707}
+    ports:
+      - "5432:5432"
+    volumes:
+      - /app/postgresql/data:/var/lib/postgresql/data
+      - /app/postgresql/log:/var/log/postgresql
+    # command:
+      # --max_connections=1000
+      # --default-authentication-plugin=mysql_native_password
+    networks:
+      - app-network
+ # ******** AIdea 服务端 ******** #
+  backend:
+    image: ${XUANXUE_SERVER_IMAGE:-xuanxue:1.0.0}
+    restart: always
+    command: sh -c '/usr/local/bin/xuanxue --conf /etc/xuanxue.yaml'
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../configs/config.yaml:/etc/xuanxue.yaml
+      - ../configs/tips.xlsx:/etc/tips.xlsx
+      # - ./etc/coins-table.yaml:/etc/aidea-coins-table.yaml
+      # - ./data:/data
+      # - ./wait-for.sh:/usr/local/bin/wait-for.sh
+    networks:
+      - app-network
+    depends_on:
+      - postgresql-server
+    #   - mysql-server
+    #   - redis-server
+  # ******** AIdea Web 端 ******** #
+  frontend:
+    image: ${AIDEA_WEB_IMAGE:-mylxsw/aidea-web:1.0.14}
+    restart: always
+    ports:
+      - "80"
+    expose:
+      - "80"
+    networks:
+      - app-network
+    environment:
+      - FRONTEND_URL=http://backend:8080
+  # ******** 反向代理服务 ******** #
+  nginx-server:
+    image: nginx:1.25
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - app-network
+    volumes:
+      - ../configs/nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+      - ../configs/nginx/certs.d:/etc/nginx/certs.d
+      - ../../web:/root/web
+    depends_on:
+      - backend
+      - frontend
+# 解决外部无法访问
+networks:
+  app-network:
